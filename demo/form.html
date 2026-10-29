@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo · Alta de cliente</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #f4f4f8; margin: 0; padding: 32px 16px; color: #222; }
+  form { max-width: 520px; margin: auto; background: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+  h1 { margin-top: 0; font-size: 22px; }
+  .f { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+  label { font-weight: 600; font-size: 13px; }
+  input[type=text], input[type=email], input[type=password], input[type=tel], input[type=date], select, textarea {
+    font: inherit; padding: 8px 10px; border: 1px solid #ccd; border-radius: 8px;
+  }
+  .inline { display: flex; gap: 14px; align-items: center; font-weight: 400; }
+  .err { color: #c22; font-size: 12px; min-height: 1em; }
+  button { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 8px; border: 0; background: #5b3df5; color: #fff; cursor: pointer; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toast { margin-top: 12px; padding: 10px; border-radius: 8px; background: #e8fbef; color: #146c2e; display: none; }
+</style>
+</head>
+<body>
+<form id="alta" action="gracias.html" method="get" novalidate>
+  <h1>Alta de cliente</h1>
+  <div class="row">
+    <div class="f"><label for="nombre">Nombre *</label><input id="nombre" name="nombre" type="text" autocomplete="off" /></div>
+    <div class="f"><label for="apellidos">Apellidos</label><input id="apellidos" name="apellidos" type="text" /></div>
+  </div>
+  <div class="f">
+    <label for="email">Email *</label>
+    <input id="email" name="email" type="email" placeholder="tu@empresa.com" />
+    <span class="err" id="email-err"></span>
+  </div>
+  <div class="f"><label for="pass">Contraseña</label><input id="pass" name="pass" type="password" /></div>
+  <div class="row">
+    <div class="f">
+      <label for="pais">País</label>
+      <select id="pais" name="pais">
+        <option value="">Elige…</option>
+        <option value="es">España</option>
+        <option value="pt">Portugal</option>
+        <option value="mx">México</option>
+        <option value="ar">Argentina</option>
+      </select>
+    </div>
+    <div class="f"><label for="nacimiento">Fecha de nacimiento</label><input id="nacimiento" name="nacimiento" type="date" /></div>
+  </div>
+  <div class="f">
+    <span style="font-weight:600;font-size:13px">Plan</span>
+    <div class="inline">
+      <label class="inline"><input type="radio" name="plan" value="basico" checked /> Básico</label>
+      <label class="inline"><input type="radio" name="plan" value="pro" /> Pro</label>
+      <label class="inline"><input type="radio" name="plan" value="empresa" /> Empresa</label>
+    </div>
+  </div>
+  <div class="f"><label for="notas">Comentarios</label><textarea id="notas" name="notas" rows="3"></textarea></div>
+  <div class="f"><label class="inline"><input type="checkbox" name="acepto" id="acepto" /> Acepto las condiciones *</label><span class="err" id="acepto-err"></span></div>
+  <button type="submit" data-testid="enviar">Crear cuenta</button>
+  <div class="toast" id="ok">Validando…</div>
+</form>
+<script>
+  const form = document.getElementById("alta");
+  form.addEventListener("submit", (e) => {
+    let ok = true;
+    const email = form.email.value.trim();
+    document.getElementById("email-err").textContent = /^\S+@\S+\.\S+$/.test(email) ? "" : ((ok = false), "Email no válido");
+    document.getElementById("acepto-err").textContent = form.acepto.checked ? "" : ((ok = false), "Tienes que aceptar");
+    if (!form.nombre.value.trim()) ok = false;
+    if (!ok) return e.preventDefault();
+    // Simula una llamada al servidor antes de navegar.
+    e.preventDefault();
+    document.getElementById("ok").style.display = "block";
+    setTimeout(() => form.submit(), 600);
+  });
+</script>
+</body>
+</html>

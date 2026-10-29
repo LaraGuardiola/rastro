@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Demo · Cuenta creada</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #f4f4f8; margin: 0; padding: 32px 16px; }
+  main { max-width: 520px; margin: auto; background: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+  dt { font-weight: 700; } dd { margin: 0 0 8px; font-family: monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="titulo">¡Cuenta creada!</h1>
+  <p>Datos recibidos:</p>
+  <dl id="datos"></dl>
+  <a href="form.html">Volver al formulario</a>
+</main>
+<script>
+  const dl = document.getElementById("datos");
+  for (const [k, v] of new URLSearchParams(location.search)) {
+    dl.insertAdjacentHTML("beforeend", `<dt>${k}</dt><dd></dd>`);
+    dl.lastElementChild.textContent = k === "pass" ? "••••" : v;
+  }
+</script>
+</body>
+</html>
