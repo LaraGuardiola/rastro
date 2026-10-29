@@ -49,8 +49,19 @@ Cada elemento guarda un selector principal y hasta 4 alternativos. Al reproducir
 - `text=Enviar` → por texto visible
 - `label=Email` → control asociado a un `<label>`, `aria-label` o placeholder
 - `xpath=//form/button`
+- `frame=2` → el tercer `<iframe>` del documento (solo en rutas de frame)
 
 Preferencia al generar: `data-testid`/`data-cy`/`data-qa` → `#id` estable → `name` → `label=` → `aria-label` → `placeholder` → `text=` → ruta CSS. Los ids y clases con pinta de autogenerados (hashes, `:r1:`, css-modules…) se descartan.
+
+### Iframes
+
+Se graba y se reproduce dentro de iframes, también **cross-origin** (pasarelas de pago, widgets embebidos…), **anidados** y `srcdoc`/`about:blank`. Cada paso guarda su ruta de iframes desde la página principal, por ejemplo `#pasarela >> iframe[name="cvc"]`. En la lista se marca con la etiqueta `IFRAME` y la ruta se puede editar en el paso.
+
+Por debajo:
+- **Al grabar**, el background pide al frame hijo que se anuncie a su padre por `postMessage`. El padre localiza su `<iframe>` comparando `contentWindow === event.source`, una comparación que el navegador permite entre orígenes distintos, y le genera selectores.
+- **Al reproducir**, cada nivel resuelve su `<iframe>` y le manda una sonda. El content script del hijo se la reporta al background, que así sabe a qué `frameId` mandar el paso. Si el iframe aún está cargando, se reintenta hasta el timeout.
+
+Demo: `bun run demo` → http://localhost:4321/checkout.html. Es un checkout con la pasarela en otro origen (`127.0.0.1`), el CVC en un iframe anidado y un iframe `srcdoc`.
 
 ### Variables
 
@@ -63,7 +74,10 @@ Carpetas, etiquetas, búsqueda (nombre, #etiqueta, URL, campos) y orden por reci
 ### Exportar / importar
 
 - **JSON** (`format: "rastro"`): un flujo, una selección o todos. Para importar, usa ⇪ o arrastra el `.json` al panel. Si ya existe un flujo con el mismo id, eliges entre sobrescribir o crear una copia.
-- **Puppeteer** (`.mjs`): script listo para Node/CI (`npm i puppeteer && node flujo.mjs`). Usa `Locator.race` con todos los selectores alternativos.
+- **Puppeteer** (`.mjs`): script listo para Node/CI (`npm i puppeteer && node flujo.mjs`). Usa `Locator.race` con todos los selectores alternativos y baja por los iframes con `contentFrame()`.
+- **Chrome DevTools Recorder** (panel *Recorder* de DevTools):
+  - *Importar*: arrastra o importa el `.json` exportado desde el Recorder y se detecta solo. Los `aria/…` pasan a `label=`/`text=`, `xpath/…` a `xpath=`, y las rutas de frame por índice a `frame=N`. El click previo a cada `change` se elimina. Los pasos sin equivalente (`hover`, `scroll`…) se omiten y se avisa de ellos.
+  - *Exportar*: genera un `.recorder.json` para importarlo en DevTools, por ejemplo para medir rendimiento con *Performance panel*. Los pasos dentro de iframes van sin ruta de frame, porque Recorder usa índices.
 
 ## Arquitectura
 
@@ -75,7 +89,7 @@ src/
              overlay.ts   resaltado, toasts y píldora (shadow DOM)
   background/             coordina la grabación entre navegaciones; único escritor de pasos grabados
   panel/                  side panel: biblioteca, editor y runner (TS + DOM, sin framework)
-  shared/                 tipos, storage, exportadores, variables
+  shared/                 tipos, storage, exportadores (JSON, Puppeteer, DevTools Recorder), variables
 ```
 
 - La reproducción la orquesta el panel. Envía cada paso al content script y, si un click o Enter puede navegar (enlace, submit, Enter en un form), espera a que la navegación empiece y termine (`webNavigation`). Si una navegación mata el content script a mitad de paso, reintenta en la página nueva.
@@ -85,5 +99,5 @@ src/
 ## Limitaciones conocidas
 
 - Los eventos sintéticos llevan `isTrusted: false`. Si alguna web lo comprueba, la vía sería un modo opcional con `chrome.debugger`.
-- Aún no soporta iframes ni inputs de tipo fichero.
+- Aún no soporta inputs de tipo fichero.
 - Shadow DOM: `text=` sí busca dentro de los shadow roots abiertos, pero los selectores CSS generados no.

@@ -244,9 +244,14 @@ export async function runStep(step: Step, s: Settings): Promise<StepResult> {
         await realClick(el);
         break;
       }
-      case "fill":
-        await typeInto(await target(false), step.value ?? "", s);
+      case "fill": {
+        // Tolerante: un «fill» sobre un select o checkbox (p. ej. importado de DevTools) hace lo lógico.
+        const el = await target(false);
+        if (el instanceof HTMLSelectElement) selectOption(el, step.value ?? "");
+        else if (kindOf(el) === "check") await setChecked(el, !["", "false", "off", "0"].includes(step.value ?? ""));
+        else await typeInto(el, step.value ?? "", s);
         break;
+      }
       case "select":
         selectOption(await target(false), step.value ?? "", step.optionText);
         break;

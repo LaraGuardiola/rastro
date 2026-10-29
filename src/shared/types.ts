@@ -9,9 +9,17 @@ export type StepType =
   | "waitFor" // esperar a que aparezca un elemento
   | "assertText"; // comprobar que un elemento contiene un texto
 
+/** Un nivel de la ruta hasta un iframe: selectores del elemento <iframe> en su documento. */
+export interface FrameRef {
+  selector: string;
+  fallbacks?: string[];
+}
+
 export interface Step {
   id: string;
   type: StepType;
+  /** Ruta de iframes desde la página principal hasta el documento del elemento (vacío = página principal). */
+  frame?: FrameRef[];
   /** Selector principal (editable). Admite CSS, `text=…` y `xpath=…`. */
   selector?: string;
   /** Selectores alternativos que se prueban si falla el principal. */

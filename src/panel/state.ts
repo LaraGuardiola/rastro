@@ -1,9 +1,10 @@
+import { toDevTools } from "../shared/devtools";
 import { parseImport, slug, toExportFile, toPuppeteer } from "../shared/exporters";
 import type { PanelToBackground, RecordedStep } from "../shared/messages";
 import * as store from "../shared/store";
 import { DEFAULT_SETTINGS, type Flow, type RecordingState, type Settings, type Step, type StepType } from "../shared/types";
 import { uid } from "../shared/util";
-import { activeTab, Runner, sendToTab, type StepStatus } from "./runner";
+import { activeTab, frameIdFor, Runner, sendToTab, type StepStatus } from "./runner";
 import { ask, debounce, download, toast } from "./ui";
 
 export type View = "library" | "editor" | "settings";
@@ -172,8 +173,10 @@ export function exportPuppeteer(flow: Flow) {
 
 export async function importText(text: string) {
   let flows: Flow[];
+  let result: ReturnType<typeof parseImport>;
   try {
-    flows = parseImport(text);
+    result = parseImport(text);
+    flows = result.flows;
   } catch (e) {
     return toast((e as Error).message, "error");
   }
@@ -198,7 +201,20 @@ export async function importText(text: string) {
     await store.saveFlow(f);
   }
   await reload();
-  toast(`${flows.length} flujo(s) importado(s)`, "ok");
+  if (result.source === "devtools") {
+    const n = result.skipped.length;
+    toast(`Grabación de DevTools importada${n ? ` (${n} paso(s) sin equivalente: ${[...new Set(result.skipped)].join(", ")})` : ""}`, n ? "info" : "ok");
+    openFlow(flows[0]!.id);
+  } else toast(`${flows.length} flujo(s) importado(s)`, "ok");
+}
+
+export function exportDevTools(flow: Flow) {
+  const { json, warnings } = toDevTools(flow);
+  download(`${slug(flow.name)}.recorder.json`, JSON.stringify(json, null, 2));
+  toast(
+    warnings ? `Exportado. ${warnings} paso(s) en iframes van sin ruta de frame: revísalos en DevTools` : "Exportado: impórtalo en DevTools › Recorder",
+    warnings ? "info" : "ok",
+  );
 }
 
 // ───────────────────────────── Pasos ─────────────────────────────
@@ -241,11 +257,15 @@ export async function pickFor(flow: Flow, step: Step) {
     const tab = await activeTab();
     state.picking = step.id;
     render();
-    const r = await sendToTab<RecordedStep | null>(tab.id!, { kind: "pick" });
+    await sendToTab(tab.id!, { kind: "ping" });
+    // Sin frameId: se difunde a todos los frames y responde aquel donde clique el usuario.
+    const r: RecordedStep | null = await chrome.tabs.sendMessage(tab.id!, { kind: "pick" });
+    void chrome.tabs.sendMessage(tab.id!, { kind: "pick:cancel" }).catch(() => {});
     if (r) {
       step.selector = r.selector;
       step.fallbacks = r.fallbacks;
       step.label = r.label;
+      step.frame = r.frame;
       if (step.type === "click" && r.type !== "click") {
         // Si apuntas a un input desde un paso vacío, adopta su tipo y valor actual.
         Object.assign(step, { type: r.type, value: r.value, optionText: r.optionText, secret: r.secret });
@@ -276,7 +296,8 @@ export async function highlightStep(step: Step) {
   if (!step.selector) return;
   try {
     const tab = await activeTab();
-    const r = await sendToTab<{ ok: boolean }>(tab.id!, { kind: "highlight", selector: step.selector, fallbacks: step.fallbacks });
+    const fid = await frameIdFor(tab.id!, step.frame, 3000);
+    const r = await sendToTab<{ ok: boolean }>(tab.id!, { kind: "highlight", selector: step.selector, fallbacks: step.fallbacks }, fid);
     if (!r?.ok) toast("No se encuentra en esta página", "error");
   } catch (e) {
     toast((e as Error).message, "error");

@@ -29,6 +29,7 @@ export function editorView(flow: Flow): HTMLElement {
         { class: "row" },
         h("button", { class: "icon", title: "Exportar JSON", onclick: () => A.exportFlows([flow]) }, "⇩"),
         h("button", { class: "icon", title: "Exportar a Puppeteer", onclick: () => A.exportPuppeteer(flow) }, "JS"),
+        h("button", { class: "icon", title: "Exportar a DevTools Recorder", onclick: () => A.exportDevTools(flow) }, "DT"),
         h("button", { class: "icon", title: "Duplicar", onclick: () => A.duplicateFlow(flow) }, "⧉"),
         h("button", { class: "icon danger", title: "Borrar flujo", onclick: () => A.removeFlows([flow.id]) }, "🗑"),
       ),
@@ -347,6 +348,7 @@ function stepRow(flow: Flow, s: Step, i: number, run: typeof state.run) {
         { class: "step-title", onclick: toggle },
         h("b", null, meta.label),
         title && h("span", { class: "lbl" }, title),
+        !!s.frame?.length && h("span", { class: "frame-tag", title: "Dentro de iframe: " + s.frame.map((f) => f.selector).join(" » ") }, s.frame.length > 1 ? `iframe ×${s.frame.length}` : "iframe"),
         val && h("span", { class: "val" }, val),
       ),
       h("span", { class: "status", title: info ?? status ?? "" }, statusIcon(status)),
@@ -415,6 +417,7 @@ function stepDetails(flow: Flow, s: Step, i: number) {
           h("button", { class: "icon", title: "Resaltar en la página", disabled: !s.selector, onclick: () => A.highlightStep(s) }, "👁"),
         ),
       ),
+    targetable && frameField(flow, s, field),
     targetable &&
       !!s.fallbacks?.length &&
       h(
@@ -504,6 +507,27 @@ function stepDetails(flow: Flow, s: Step, i: number) {
       h("button", { class: "icon", title: "Duplicar paso", onclick: () => A.duplicateStep(flow, s) }, "⧉"),
       h("button", { class: "icon danger", title: "Borrar paso", onclick: () => A.deleteStep(flow, s) }, "🗑"),
     ),
+  );
+}
+
+const FRAME_SEP = " >> ";
+
+function frameField(flow: Flow, s: Step, field: (l: string, ...c: (Node | false | undefined | null)[]) => HTMLElement) {
+  return field(
+    "Iframe",
+    h("input", {
+      class: "input sm mono",
+      value: (s.frame ?? []).map((f) => f.selector).join(FRAME_SEP),
+      placeholder: "— página principal —   (iframe#pago >> iframe[name=cvc])",
+      "data-k": `frame-${s.id}`,
+      oninput: (e: Event) => {
+        const parts = (e.target as HTMLInputElement).value.split(">>").map((x) => x.trim()).filter(Boolean);
+        // Conserva los alternativos de los niveles que no cambian.
+        s.frame = parts.length ? parts.map((sel, i) => (s.frame?.[i]?.selector === sel ? s.frame[i]! : { selector: sel })) : undefined;
+        A.saveSoon(flow);
+      },
+    }),
+    !!s.frame?.length && h("small", { class: "muted" }, "Ruta de iframes desde la página principal, separada por >>"),
   );
 }
 

@@ -179,7 +179,8 @@ export function startRecording(m: Mode, sink: (s: RecordedStep) => void, onStop:
   for (const [ev, fn] of listeners) window.addEventListener(ev, fn, true);
   window.addEventListener("pagehide", onLeave);
   window.addEventListener("scroll", onScroll, true);
-  overlay.setPill(m);
+  // La píldora solo en la página principal, no en cada iframe.
+  if (window === window.top) overlay.setPill(m);
 }
 
 export function stopRecording() {
@@ -226,7 +227,7 @@ export function pickOnce(): Promise<RecordedStep | null> {
     window.addEventListener("click", click, true);
     window.addEventListener("keydown", key, true);
     cancelPick = () => done(null);
-    overlay.toast("Clica el elemento (Esc para cancelar)");
+    if (window === window.top) overlay.toast("Clica el elemento (Esc para cancelar)");
   });
 }
 

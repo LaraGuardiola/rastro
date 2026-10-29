@@ -2,6 +2,7 @@
 //
 // Sintaxis soportada:
 //   css            → cualquier selector CSS (por defecto)
+//   frame=2        → el tercer <iframe> del documento (para rutas de frames importadas)
 //   text=Enviar    → elemento cuyo texto visible es exactamente «Enviar» (o, si no hay, que lo contiene)
 //   label=Email    → control de formulario asociado a la etiqueta/aria-label «Email»
 //   xpath=//div[1] → XPath
@@ -133,6 +134,11 @@ export function resolveAll(selector: string): Element[] {
     if (selector.startsWith("text=")) return byText(unquote(selector.slice(5)));
     if (selector.startsWith("label=")) return byLabel(unquote(selector.slice(6)));
     if (selector.startsWith("xpath=")) return byXPath(selector.slice(6));
+    if (selector.startsWith("frame=")) {
+      // N-ésimo iframe del documento (formato de DevTools Recorder).
+      const f = document.querySelectorAll("iframe, frame")[Number(selector.slice(6))];
+      return f ? [f] : [];
+    }
     return [...document.querySelectorAll(selector)];
   } catch {
     return [];
@@ -232,6 +238,14 @@ export function buildSelectors(el: Element): string[] {
   if (el instanceof HTMLAnchorElement) {
     const href = el.getAttribute("href");
     if (href && href.length < 80 && !href.startsWith("javascript:") && href !== "#") c.push(`a[href=${q(href)}]`);
+  }
+  if (el instanceof HTMLIFrameElement || el instanceof HTMLFrameElement) {
+    const src = el.getAttribute("src");
+    if (src && !src.startsWith("data:") && !src.startsWith("javascript:")) {
+      // Sin query string: suele llevar tokens que cambian en cada carga.
+      const base = src.split(/[?#]/)[0]!;
+      c.push(base === src ? `${tag}[src=${q(src)}]` : `${tag}[src^=${q(base)}]`);
+    }
   }
   const title = el.getAttribute("title");
   if (title) c.push(`${tag}[title=${q(title)}]`);

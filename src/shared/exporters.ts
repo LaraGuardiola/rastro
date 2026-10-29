@@ -1,3 +1,4 @@
+import { fromDevTools, isDevToolsRecording } from "./devtools";
 import { newFlow } from "./store";
 import type { ExportFile, Flow, Step, StepType } from "./types";
 import { uid } from "./util";
@@ -8,14 +9,29 @@ export function toExportFile(flows: Flow[]): ExportFile {
 
 const STEP_TYPES: StepType[] = ["navigate", "click", "fill", "select", "check", "press", "wait", "waitFor", "assertText"];
 
-/** Acepta un ExportFile, un Flow suelto o un array de Flow. Valida y normaliza. */
-export function parseImport(text: string): Flow[] {
+export interface ImportResult {
+  flows: Flow[];
+  source: "rastro" | "devtools";
+  /** Pasos que no se pudieron convertir (importación desde DevTools). */
+  skipped: string[];
+}
+
+/** Acepta un ExportFile de Rastro, un Flow suelto, un array de Flow o una grabación de DevTools Recorder. */
+export function parseImport(text: string): ImportResult {
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
     throw new Error("El fichero no es JSON válido");
   }
+  if (isDevToolsRecording(data)) {
+    const { flow, skipped } = fromDevTools(data);
+    return { flows: [flow], source: "devtools", skipped };
+  }
+  return { flows: parseRastro(data), source: "rastro", skipped: [] };
+}
+
+function parseRastro(data: unknown): Flow[] {
   const raw: unknown[] = Array.isArray(data)
     ? data
     : data && typeof data === "object" && "flows" in data && Array.isArray((data as ExportFile).flows)
@@ -63,10 +79,17 @@ function jsValue(v: string): string {
   return "v(" + js(v) + ")";
 }
 
-function locator(step: Step): string {
+function locator(step: Step, ctx = "page"): string {
   const sels = [step.selector!, ...(step.fallbacks ?? [])].map(ppSelector);
-  if (sels.length === 1) return `page.locator(${js(sels[0]!)})`;
-  return `Locator.race([${sels.map((x) => `page.locator(${js(x)})`).join(", ")}])`;
+  if (sels.length === 1) return `${ctx}.locator(${js(sels[0]!)})`;
+  return `Locator.race([${sels.map((x) => `${ctx}.locator(${js(x)})`).join(", ")}])`;
+}
+
+/** Expresión que resuelve el frame del paso (o `page`). */
+function frameExpr(step: Step): string | undefined {
+  if (!step.frame?.length) return undefined;
+  const path = step.frame.map((f) => [f.selector, ...(f.fallbacks ?? [])].map(ppSelector));
+  return `await frameOf(${JSON.stringify(path)})`;
 }
 
 export function toPuppeteer(flow: Flow): string {
@@ -86,6 +109,18 @@ export function toPuppeteer(flow: Flow): string {
   out.push(`};`);
   out.push(`const v = (s) => s.replace(/\\{\\{\\s*([$\\w.-]+)\\s*\\}\\}/g, (m, k) => vars[k] != null ? v(vars[k]) : builtins[k] ?? m);`);
   out.push("");
+  if (flow.steps.some((st) => st.frame?.length)) {
+    out.push(`/** Baja por la ruta de iframes: en cada nivel, el primer selector que aparezca. */`);
+    out.push(`async function frameOf(path) {`);
+    out.push(`  let f = page.mainFrame();`);
+    out.push(`  for (const sels of path) {`);
+    out.push(`    const el = await Locator.race(sels.map((s) => f.locator(s))).waitHandle();`);
+    out.push(`    f = await el.contentFrame();`);
+    out.push(`  }`);
+    out.push(`  return f;`);
+    out.push(`}`);
+    out.push("");
+  }
   out.push(`const browser = await puppeteer.launch({ headless: process.env.HEADLESS !== "0" ? "new" : false });`);
   out.push(`const page = await browser.newPage();`);
   out.push(`page.setDefaultTimeout(T);`);
@@ -99,6 +134,10 @@ export function toPuppeteer(flow: Flow): string {
     }
     out.push(comment);
     const val = s.value ?? "";
+    const fr = frameExpr(s);
+    const ctx = fr ? "f" : "page";
+    const loc = () => locator(s, ctx);
+    if (fr && s.type !== "navigate" && s.type !== "wait") out.push(`  {`, `  const f = ${fr};`);
     switch (s.type) {
       case "navigate":
         out.push(`  await page.goto(${jsValue(val)}, { waitUntil: "networkidle2" });`);
@@ -106,23 +145,23 @@ export function toPuppeteer(flow: Flow): string {
       case "click":
         out.push(`  await Promise.all([`);
         out.push(`    page.waitForNavigation({ timeout: 1500 }).catch(() => {}),`);
-        out.push(`    ${locator(s)}.click(),`);
+        out.push(`    ${loc()}.click(),`);
         out.push(`  ]);`);
         break;
       case "fill":
-        out.push(`  await ${locator(s)}.fill(${jsValue(val)});`);
+        out.push(`  await ${loc()}.fill(${jsValue(val)});`);
         break;
       case "select":
-        out.push(`  await page.select(${js(ppSelector(s.selector!))}, ${jsValue(val)});`);
+        out.push(`  await ${ctx}.select(${js(ppSelector(s.selector!))}, ${jsValue(val)});`);
         break;
       case "check":
         out.push(`  {`);
-        out.push(`    const el = await ${locator(s)}.waitHandle();`);
+        out.push(`    const el = await ${loc()}.waitHandle();`);
         out.push(`    if ((await el.evaluate((e) => e.checked ?? e.getAttribute("aria-checked") === "true")) !== ${val !== "false"}) await el.click();`);
         out.push(`  }`);
         break;
       case "press":
-        if (s.selector) out.push(`  await ${locator(s)}.click();`);
+        if (s.selector) out.push(`  await ${loc()}.click();`);
         out.push(`  await Promise.all([`);
         out.push(`    page.waitForNavigation({ timeout: 1500 }).catch(() => {}),`);
         out.push(`    page.keyboard.press(${js(val || "Enter")}),`);
@@ -132,16 +171,17 @@ export function toPuppeteer(flow: Flow): string {
         out.push(`  await new Promise((r) => setTimeout(r, ${Number(val) || 1000}));`);
         break;
       case "waitFor":
-        out.push(`  await ${locator(s)}.wait();`);
+        out.push(`  await ${loc()}.wait();`);
         break;
       case "assertText":
         out.push(`  {`);
-        out.push(`    const el = await ${locator(s)}.waitHandle();`);
+        out.push(`    const el = await ${loc()}.waitHandle();`);
         out.push(`    const txt = await el.evaluate((e) => e.value ?? e.innerText);`);
         out.push(`    if (!txt.includes(${jsValue(val)})) throw new Error(\`Paso ${i + 1}: se esperaba ${val.replace(/[`$\\]/g, "")} y hay \${txt}\`);`);
         out.push(`  }`);
         break;
     }
+    if (fr && s.type !== "navigate" && s.type !== "wait") out.push(`  }`);
   });
 
   out.push(`  console.log("✓ ${flow.name.replace(/"/g, "'")}: OK");`);

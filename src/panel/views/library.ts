@@ -191,6 +191,7 @@ function flowCard(f: Flow) {
           h("button", { onclick: () => A.duplicateFlow(f) }, "⧉ Duplicar"),
           h("button", { onclick: () => A.exportFlows([f]) }, "⇩ Exportar JSON"),
           h("button", { onclick: () => A.exportPuppeteer(f) }, "⇩ Exportar a Puppeteer"),
+          h("button", { onclick: () => A.exportDevTools(f) }, "⇩ Exportar a DevTools Recorder"),
           h("button", { class: "danger", onclick: () => A.removeFlows([f.id]) }, "🗑 Borrar"),
         ),
       ),

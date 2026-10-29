@@ -1,7 +1,7 @@
 // Orquestador de la reproducción. Vive en el side panel: manda cada paso al content
 // script de la pestaña y gestiona navegaciones entre páginas (que matan al content script).
 import type { StepResult, ToContent } from "../shared/messages";
-import type { Flow, RunSummary, Settings, Step } from "../shared/types";
+import type { FrameRef, Flow, RunSummary, Settings, Step } from "../shared/types";
 import { BUILTIN_VARS, interpolate, sleep } from "../shared/util";
 
 export type StepStatus = "pending" | "running" | "ok" | "error" | "skipped";
@@ -33,10 +33,10 @@ async function waitForLoad(tabId: number, timeout = 30000) {
 }
 
 /** Observa navegaciones de página completa en la pestaña (inicio y fin). */
-function watchNavigations(tabId: number) {
+function watchNavigations(tabId: number, frameId = 0) {
   let started = false;
   let pending = 0;
-  const mine = (d: { tabId: number; frameId: number }) => d.tabId === tabId && d.frameId === 0;
+  const mine = (d: { tabId: number; frameId: number }) => d.tabId === tabId && (d.frameId === 0 || d.frameId === frameId);
   const onStart = (d: chrome.webNavigation.WebNavigationParentedCallbackDetails) => {
     if (mine(d)) (started = true), pending++;
   };
@@ -71,30 +71,57 @@ function watchNavigations(tabId: number) {
   };
 }
 
-/** Garantiza que el content script responde en la pestaña (lo inyecta si hace falta). */
-export async function ensureContent(tabId: number): Promise<void> {
+/** Garantiza que el content script responde en el frame (lo inyecta si hace falta). */
+export async function ensureContent(tabId: number, frameId = 0): Promise<void> {
   for (let i = 0; i < 20; i++) {
     try {
-      const r = await chrome.tabs.sendMessage(tabId, { kind: "ping" } satisfies ToContent);
+      const r = await chrome.tabs.sendMessage(tabId, { kind: "ping" } satisfies ToContent, { frameId });
       if (r?.ok) return;
     } catch {
       /* aún no está */
     }
     if (i === 3) {
       try {
-        await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+        await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ["content.js"] });
       } catch (e) {
         throw new Error("No se puede actuar en esta página (" + (e as Error).message + ")");
       }
     }
     await sleep(150);
   }
-  throw new Error("El content script no responde en la pestaña");
+  throw new Error(frameId ? "El iframe no responde" : "El content script no responde en la pestaña");
 }
 
-export async function sendToTab<T = unknown>(tabId: number, msg: ToContent): Promise<T> {
-  await ensureContent(tabId);
-  return chrome.tabs.sendMessage(tabId, msg);
+/** Envía a un frame concreto (0 = página principal). Nunca a todos: cada frame ejecutaría el paso. */
+export async function sendToTab<T = unknown>(tabId: number, msg: ToContent, frameId = 0): Promise<T> {
+  await ensureContent(tabId, frameId);
+  return chrome.tabs.sendMessage(tabId, msg, { frameId });
+}
+
+/** Recorre la ruta de iframes del paso y devuelve el frameId del documento destino. */
+export async function frameIdFor(tabId: number, frame: FrameRef[] | undefined, timeout: number): Promise<number> {
+  let fid = 0;
+  for (const [i, ref] of (frame ?? []).entries()) {
+    const end = Date.now() + timeout;
+    let next: number | undefined;
+    // El padre localiza el <iframe> y le manda una sonda; el content script del hijo la reporta
+    // al background con su frameId. Si el iframe aún carga, la sonda se pierde: se reintenta.
+    while (next == null) {
+      const r = await sendToTab<{ token?: string; error?: string }>(
+        tabId,
+        { kind: "frame:resolve", selectors: [ref.selector, ...(ref.fallbacks ?? [])], timeout: Math.max(0, end - Date.now()) },
+        fid,
+      );
+      if (!r?.token) throw new Error(`${r?.error ?? "No se encontró el iframe"} (nivel ${i + 1})`);
+      for (let k = 0; k < 8 && next == null; k++) {
+        await sleep(60);
+        next = (await chrome.runtime.sendMessage({ kind: "frame:probed", token: r.token }))?.frameId;
+      }
+      if (next == null && Date.now() > end) throw new Error(`El iframe «${ref.selector}» no responde (nivel ${i + 1})`);
+    }
+    fid = next;
+  }
+  return fid;
 }
 
 /** Valores de variables para una ejecución: integradas fijadas una vez + las del flujo. */
@@ -176,18 +203,21 @@ export class Runner {
     }
 
     const acts = step.type === "click" || step.type === "press";
+    const timeout = step.timeout ?? settings.timeout;
     let res: StepResult | undefined;
-    const navs = watchNavigations(tabId);
+    let fid = await frameIdFor(tabId, step.frame, timeout);
+    const navs = watchNavigations(tabId, fid);
     try {
       for (let attempt = 0; ; attempt++) {
         try {
-          res = await sendToTab<StepResult>(tabId, { kind: "run-step", step, settings });
+          res = await sendToTab<StepResult>(tabId, { kind: "run-step", step, settings }, fid);
         } catch (e) {
           if (!PORT_CLOSED.test((e as Error).message)) throw e;
-          // La página navegó mientras se ejecutaba el paso.
+          // La página (o el iframe) navegó mientras se ejecutaba el paso.
           await navs.settled();
           if (acts) return; // el click/tecla ya provocó la navegación
           if (attempt >= 2) throw new Error("La página no paró de navegar durante el paso");
+          fid = await frameIdFor(tabId, step.frame, timeout);
           continue; // reintentar en la página nueva
         }
         if (!res) throw new Error("Sin respuesta de la página");

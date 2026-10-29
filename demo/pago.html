@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 14px; background: #faf9ff; }
+  .f { margin-bottom: 10px; display: flex; flex-direction: column; gap: 3px; }
+  label { font-weight: 600; font-size: 12px; }
+  input { font: inherit; padding: 7px 9px; border: 1px solid #ccd; border-radius: 7px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  iframe { width: 100%; height: 62px; border: 0; }
+  button { font: inherit; font-weight: 700; padding: 9px 16px; border-radius: 8px; border: 0; background: #0f766e; color: #fff; cursor: pointer; }
+  #res { margin-left: 10px; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="f"><label for="tarjeta">Número de tarjeta</label><input id="tarjeta" inputmode="numeric" placeholder="1234 5678 9012 3456" /></div>
+  <div class="row">
+    <div class="f"><label for="caducidad">Caducidad</label><input id="caducidad" placeholder="MM/AA" /></div>
+    <iframe name="cvc" title="CVC" src="cvc.html"></iframe>
+  </div>
+  <button type="button" id="pagar">Pagar 49,90 €</button><span id="res"></span>
+<script>
+  document.getElementById("pagar").addEventListener("click", () => {
+    const num = document.getElementById("tarjeta").value.replace(/\s/g, "");
+    const cvc = frames.cvc.document.getElementById("cvc").value;
+    const res = document.getElementById("res");
+    if (num.length < 12 || cvc.length < 3) return (res.textContent = "Datos incompletos", res.style.color = "#c22");
+    res.textContent = "Pago aceptado"; res.style.color = "#146c2e";
+    parent.postMessage({ pago: "ok", last4: num.slice(-4) }, "*");
+  });
+</script>
+</body>
+</html>
