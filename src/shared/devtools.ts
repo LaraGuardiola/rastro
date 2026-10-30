@@ -2,6 +2,7 @@
 // Formato: https://github.com/puppeteer/replay (title + steps[] con selectors: string[][]).
 import { newFlow, newStep } from "./store";
 import type { Flow, FrameRef, Step } from "./types";
+import { looksGenerated } from "./util";
 
 interface DTStep {
   type: string;
@@ -43,6 +44,8 @@ function mapSelectors(raw: (string | string[])[] | undefined, isInput: boolean):
     const parts = Array.isArray(entry) ? entry : [entry];
     if (parts.length !== 1) continue;
     const s = parts[0]!;
+    // Recorder no sabe qué ids son aleatorios: #el-id-7440-1658 dejaría de existir en la próxima carga.
+    if (hasGeneratedId(s)) continue;
     if (s.startsWith("aria/")) {
       const n = s.slice(5).replace(/\[role="[^"]*"\]$/, "");
       name ??= n.replace(/\s*\*$/, "");
@@ -58,6 +61,11 @@ function mapSelectors(raw: (string | string[])[] | undefined, isInput: boolean):
     }
   }
   return { selectors: [...new Set([...stable, ...named, ...positional, ...xpath])].slice(0, 6), name };
+}
+
+function hasGeneratedId(sel: string): boolean {
+  const ids = [...sel.matchAll(/#((?:\\.|[\w-])+)/g), ...sel.matchAll(/@id=["']([^"']+)["']/g), ...sel.matchAll(/\[id=["']?([^"'\]]+)/g)];
+  return ids.some((m) => looksGenerated(m[1]!.replace(/\\/g, "")));
 }
 
 function mapFrame(frame: number[] | undefined): FrameRef[] | undefined {

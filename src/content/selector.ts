@@ -10,6 +10,8 @@
 // Al generar, se producen varios candidatos ordenados por robustez. El reproductor
 // prueba el principal y, si falla, los alternativos.
 
+import { looksGenerated } from "../shared/util";
+
 const TEST_ATTRS = ["data-testid", "data-test-id", "data-test", "data-cy", "data-qa", "data-e2e", "data-automation-id"];
 
 const CLICKABLE =
@@ -20,19 +22,6 @@ const CLICKABLE =
 export const CONTROL = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
 const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
-
-/** ¿Parece un id/clase autogenerado (hashes, contadores, ids de React…)? */
-function looksGenerated(s: string): boolean {
-  return (
-    s.length > 40 ||
-    /\d{4,}/.test(s) ||
-    /^[a-f0-9-]{10,}$/i.test(s) ||
-    /^:r[0-9a-z]+:?$/.test(s) || // React useId
-    /^(ember|ext-gen|react-|mui-|radix-|headlessui-|downshift-|rc-|el-id-)/i.test(s) ||
-    (/[_-][a-zA-Z0-9]{5,}$/.test(s) && /\d.*\d/.test(s.slice(-6))) || // css-modules: btn_x3F9a
-    /^(css|sc|jsx|emotion|svelte)-[a-z0-9]+$/i.test(s)
-  );
-}
 
 const STATE_CLASSES = /^(is-|has-)?(active|focus(ed)?|hover(ed)?|selected|open(ed)?|disabled|checked|visible|hidden|show|in|ng-.*)$/i;
 
@@ -250,7 +239,12 @@ export function buildSelectors(el: Element): string[] {
   const title = el.getAttribute("title");
   if (title) c.push(`${tag}[title=${q(title)}]`);
 
-  const unique = dedupe(c).filter((s) => isUnique(s, el));
+  // text= apunta al nodo más profundo con ese texto (p. ej. el <span> de un <li> de desplegable): clicarlo equivale.
+  const sameTarget = (s: string) => {
+    const r = resolveAll(s);
+    return r.length === 1 && (r[0] === el || (s.startsWith("text=") && el.contains(r[0]!) && textOf(r[0]!) === textOf(el)));
+  };
+  const unique = dedupe(c).filter(sameTarget);
   unique.push(cssPath(el));
   return dedupe(unique).slice(0, 5);
 }
@@ -313,11 +307,12 @@ export type ActionKind = "click" | "fill" | "select" | "check" | "file";
 
 export function kindOf(el: Element): ActionKind {
   if (el instanceof HTMLSelectElement) return "select";
-  if (el instanceof HTMLTextAreaElement) return "fill";
+  if (el instanceof HTMLTextAreaElement) return el.readOnly ? "click" : "fill";
   if (el instanceof HTMLInputElement) {
     if (el.type === "checkbox" || el.type === "radio") return "check";
     if (el.type === "file") return "file";
-    if (TEXTLIKE.has(el.type)) return "fill";
+    // Readonly = selects/datepickers de librerías (Element Plus, Vuetify…): abren un desplegable, no se escribe.
+    if (TEXTLIKE.has(el.type)) return el.readOnly ? "click" : "fill";
     return "click";
   }
   if ((el as HTMLElement).isContentEditable) return "fill";

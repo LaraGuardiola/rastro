@@ -51,7 +51,11 @@ Cada elemento guarda un selector principal y hasta 4 alternativos. Al reproducir
 - `xpath=//form/button`
 - `frame=2` → el tercer `<iframe>` del documento (solo en rutas de frame)
 
-Preferencia al generar: `data-testid`/`data-cy`/`data-qa` → `#id` estable → `name` → `label=` → `aria-label` → `placeholder` → `text=` → ruta CSS. Los ids y clases con pinta de autogenerados (hashes, `:r1:`, css-modules…) se descartan.
+Preferencia al generar: `data-testid`/`data-cy`/`data-qa` → `#id` estable → `name` → `label=` → `aria-label` → `placeholder` → `text=` → ruta CSS. Los ids y clases con pinta de autogenerados se descartan: hashes, `:r1:` de React, css-modules, y ids `prefijo-aleatorio-contador` como los de Element Plus (`el-id-7440-1658`). El `<label for="el-id-…">` sigue sirviendo, porque `label=` busca por el texto de la etiqueta en el momento de reproducir. Al importar de DevTools Recorder también se quitan los selectores que dependen de esos ids.
+
+Los inputs `readonly` (selects y datepickers de librerías como Element Plus o Vuetify) se graban como `Click`, porque abren un desplegable. La opción elegida se graba como `Click` en `text=…`.
+
+Demo: http://localhost:4321/element.html imita el DOM de Element Plus, con ids nuevos en cada carga.
 
 ### Iframes
 

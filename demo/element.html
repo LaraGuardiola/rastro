@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo · Ids aleatorios (estilo Element Plus)</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #f4f4f8; margin: 0; padding: 32px 16px; color: #222; }
+  #app { max-width: 520px; margin: auto; background: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+  h1 { margin-top: 0; font-size: 22px; }
+  .hint { font-size: 12px; color: #667; background: #f0f0f6; padding: 8px 10px; border-radius: 8px; }
+  .el-form-item { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .el-form-item__label { font-weight: 600; font-size: 13px; }
+  .el-input__wrapper, .el-select__wrapper { border: 1px solid #ccd; border-radius: 8px; padding: 0 10px; display: flex; }
+  .el-input__inner, .el-select__input { font: inherit; border: 0; outline: 0; padding: 8px 0; flex: 1; background: transparent; }
+  .el-select__input { cursor: pointer; }
+  .el-select-dropdown { position: absolute; background: #fff; border: 1px solid #ccd; border-radius: 8px; box-shadow: 0 6px 20px #0002; list-style: none; margin: 4px 0; padding: 4px 0; z-index: 10; }
+  .el-select-dropdown__item { padding: 6px 14px; cursor: pointer; }
+  .el-select-dropdown__item:hover { background: #f0f0ff; }
+  .el-checkbox { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .el-button { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 8px; border: 0; background: #409eff; color: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+  // Imita el DOM de Element Plus: ids «el-id-<aleatorio de 3-4 cifras>-<contador>» que cambian en cada carga,
+  // inputs sin name, <label for> apuntando a esos ids y un select que es un input readonly + desplegable en <body>.
+  const prefix = Math.floor(Math.random() * 9900) + 100;
+  let n = Math.floor(Math.random() * 2000);
+  const id = () => `el-id-${prefix}-${n++}`;
+
+  const app = document.getElementById("app");
+  app.innerHTML = `<h1>Alta (ids aleatorios)</h1>
+    <p class="hint">Ids de esta carga: <code>${id()}</code>… recarga y cambian.</p>`;
+
+  function input(label, placeholder) {
+    const i = id();
+    app.insertAdjacentHTML("beforeend", `<div class="el-form-item" id="${id()}">
+      <label class="el-form-item__label" for="${i}">${label}</label>
+      <div class="el-input"><div class="el-input__wrapper"><input class="el-input__inner" id="${i}" type="text" autocomplete="off" placeholder="${placeholder}"></div></div>
+    </div>`);
+    return document.getElementById(i);
+  }
+
+  function select(label, options) {
+    const i = id();
+    const pop = id();
+    app.insertAdjacentHTML("beforeend", `<div class="el-form-item">
+      <label class="el-form-item__label" for="${i}">${label}</label>
+      <div class="el-select"><div class="el-select__wrapper"><input class="el-select__input" id="${i}" readonly placeholder="Selecciona" aria-controls="${pop}"></div></div>
+    </div>`);
+    const inp = document.getElementById(i);
+    inp.addEventListener("click", () => {
+      document.querySelectorAll(".el-select-dropdown").forEach((d) => d.remove());
+      const r = inp.getBoundingClientRect();
+      const ul = document.createElement("ul");
+      ul.className = "el-select-dropdown";
+      ul.id = pop;
+      ul.style.cssText = `left:${r.left + scrollX}px;top:${r.bottom + scrollY}px;width:${r.width}px`;
+      ul.innerHTML = options.map((o) => `<li class="el-select-dropdown__item" id="${id()}"><span>${o}</span></li>`).join("");
+      ul.addEventListener("click", (e) => {
+        const li = e.target.closest("li");
+        if (!li) return;
+        inp.value = li.textContent.trim();
+        ul.remove();
+      });
+      document.body.appendChild(ul); // teleport, como Element Plus
+    });
+    return inp;
+  }
+
+  const nombre = input("Nombre", "Tu nombre");
+  const email = input("Email", "tu@email.com");
+  const pais = select("País", ["España", "México", "Argentina"]);
+
+  const cb = id();
+  app.insertAdjacentHTML("beforeend", `<div class="el-form-item"><label class="el-checkbox">
+    <input type="checkbox" class="el-checkbox__original" id="${cb}"><span class="el-checkbox__label">Acepto las condiciones</span></label></div>
+    <button type="button" class="el-button" id="${id()}"><span>Guardar</span></button>`);
+
+  app.querySelector(".el-button").addEventListener("click", () => {
+    const q = new URLSearchParams({ nombre: nombre.value, email: email.value, pais: pais.value, acepto: document.getElementById(cb).checked ? "on" : "" });
+    setTimeout(() => (location.href = "gracias.html?" + q), 150); // navegación «a lo SPA», con retardo
+  });
+</script>
+</body>
+</html>
