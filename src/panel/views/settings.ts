@@ -71,6 +71,49 @@ export function settingsView(): HTMLElement {
         "Resaltar cada elemento antes de actuar",
       ),
       h(
+        "label",
+        { class: "toggle" },
+        h("input", {
+          type: "checkbox",
+          checked: s.autoWait,
+          onchange: (e: Event) => {
+            set("autoWait", (e.target as HTMLInputElement).checked);
+            A.render();
+          },
+        }),
+        "Esperar a que la página termine de cargar antes de cada acción",
+      ),
+      h(
+        "small",
+        { class: "muted" },
+        "Antes de actuar espera a que no haya peticiones en curso ni loaders visibles, y a que el elemento esté habilitado y sin nada encima.",
+      ),
+      s.autoWait &&
+        h(
+          "label",
+          { class: "field" },
+          h("span", null, "Selector de loaders propios"),
+          h("input", {
+            class: "input sm",
+            type: "text",
+            placeholder: ".mi-loader, #overlay-cargando",
+            value: s.loaderSelector,
+            oninput: (e: Event) => {
+              const inp = e.target as HTMLInputElement;
+              let ok = true;
+              try {
+                if (inp.value.trim()) document.querySelector(inp.value);
+              } catch {
+                ok = false;
+              }
+              inp.setCustomValidity(ok ? "" : "Selector CSS no válido");
+              inp.reportValidity();
+              if (ok) set("loaderSelector", inp.value);
+            },
+          }),
+          h("small", { class: "muted" }, "Opcional. Se suma a los loaders de Element Plus, Ant, Vuetify, MUI, Bootstrap… Mientras alguno sea visible, Rastro espera."),
+        ),
+      h(
         "div",
         { class: "row" },
         h(

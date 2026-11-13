@@ -41,6 +41,19 @@ Qué se graba al clicar o usar cada tipo de elemento:
 
 Tipos de paso que se pueden añadir a mano: `Esperar` (ms), `Esperar a` (que aparezca un elemento) y `Comprobar` (que un elemento contiene un texto).
 
+### Espera automática
+
+Antes de cada acción (click, escribir, seleccionar, marcar, tecla), Rastro espera a que la página termine lo que está haciendo:
+
+- **Red**: ninguna petición `fetch`/XHR en curso durante 300 ms. Un script en el mundo de la página (`hook.js`) las cuenta. Las que pasan de 10 s (long-polling) dejan de contar.
+- **DOM**: sin cambios durante 150 ms. Como mucho espera 1,5 s por esto, porque hay webs con relojes o carruseles que no paran nunca.
+- **Loaders**: ninguno visible. Se reconocen los de Element Plus, Ant, Vuetify, MUI, PrimeVue, Quasar y Bootstrap, además de `[aria-busy="true"]`. En Ajustes puedes añadir el selector de los loaders propios de tu app.
+- **Elemento**: habilitado, sin moverse y sin nada encima de su centro (overlays de carga).
+
+Si la página no llega a estar tranquila dentro del timeout, el paso sigue adelante igualmente. En cambio, si el elemento sigue deshabilitado o tapado al acabar el timeout, el paso falla y dice por qué. La espera automática se puede desactivar en Ajustes.
+
+Demo: http://localhost:4321/wizard.html. Es un formulario de 3 pasos con peticiones lentas, un overlay de carga y un botón deshabilitado hasta que cargan las opciones.
+
 ### Selectores
 
 Cada elemento guarda un selector principal y hasta 4 alternativos. Al reproducir se prueban en orden. Sintaxis:

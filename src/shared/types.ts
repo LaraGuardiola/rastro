@@ -71,6 +71,10 @@ export interface Settings {
   keyDelay: number;
   /** Resaltar el elemento antes de actuar. */
   highlight: boolean;
+  /** Antes de cada acción, esperar a que no haya peticiones/loaders y el elemento esté listo. */
+  autoWait: boolean;
+  /** Selector CSS extra de los loaders propios de la app (se suma a los de librerías conocidas). */
+  loaderSelector: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -79,6 +83,8 @@ export const DEFAULT_SETTINGS: Settings = {
   typeMode: "instant",
   keyDelay: 25,
   highlight: true,
+  autoWait: true,
+  loaderSelector: "",
 };
 
 /** Estado de grabación (vive en storage.session). */

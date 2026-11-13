@@ -9,6 +9,8 @@ const entries = [
   { entry: "src/background/index.ts", out: "background.js", format: "esm" as const },
   // Los content scripts no pueden ser módulos: IIFE.
   { entry: "src/content/index.ts", out: "content.js", format: "iife" as const },
+  // Corre en el mundo de la página (no en el aislado) para ver sus fetch/XHR.
+  { entry: "src/content/hook.ts", out: "hook.js", format: "iife" as const },
   { entry: "src/panel/main.ts", out: "panel.js", format: "esm" as const },
 ];
 

@@ -6,6 +6,7 @@ import type { Settings, Step } from "../shared/types";
 import { sleep } from "../shared/util";
 import { COLORS, overlay } from "./overlay";
 import { checkedOf, isVisible, kindOf, resolve, textOf, valueOf } from "./selector";
+import { settle, untilActionable } from "./wait";
 
 class StepError extends Error {}
 
@@ -230,9 +231,17 @@ export async function runStep(step: Step, s: Settings): Promise<StepResult> {
   let nav = false;
   try {
     let used: string | undefined;
+    // Antes de actuar, que la página termine lo que está haciendo (peticiones, loaders, renders).
+    const acts = !["waitFor", "assertText"].includes(step.type);
+    if (s.autoWait && acts) await settle(timeout, s.loaderSelector);
     const target = async (visible = true) => {
       const r = await find(step, timeout, visible);
       used = r.selector;
+      if (s.autoWait && acts) {
+        if (isVisible(r.el)) await scrollTo(r.el);
+        const why = await untilActionable(r.el, timeout, isVisible(r.el), s.loaderSelector);
+        if (why) throw new StepError(`«${step.label ?? r.selector}» ${why}`);
+      }
       if (s.highlight) overlay.flash(r.el, step.label ?? step.type, Math.max(400, s.stepDelay + 200), COLORS.run);
       return r.el;
     };

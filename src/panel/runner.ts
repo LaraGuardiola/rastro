@@ -82,6 +82,8 @@ export async function ensureContent(tabId: number, frameId = 0): Promise<void> {
     }
     if (i === 3) {
       try {
+        // Pestaña abierta antes de instalar la extensión: también el hook de red (mundo de la página).
+        await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ["hook.js"], world: "MAIN" }).catch(() => {});
         await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, files: ["content.js"] });
       } catch (e) {
         throw new Error("No se puede actuar en esta página (" + (e as Error).message + ")");

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Demo · Formulario por pasos con loaders</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; background: #f4f4f8; margin: 0; padding: 32px 16px; color: #222; }
+  #app { max-width: 520px; margin: auto; background: #fff; padding: 24px 28px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+  h1 { margin-top: 0; font-size: 22px; }
+  .hint { font-size: 12px; color: #667; background: #f0f0f6; padding: 8px 10px; border-radius: 8px; }
+  label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; font-weight: 600; font-size: 13px; }
+  input, select { font: inherit; padding: 8px 10px; border: 1px solid #ccd; border-radius: 8px; font-weight: 400; }
+  button { font: inherit; font-weight: 700; padding: 10px 18px; border-radius: 8px; border: 0; background: #5b3df5; color: #fff; cursor: pointer; }
+  button:disabled { background: #aab; cursor: not-allowed; }
+  /* Overlay de carga propio (no es de ninguna librería): tapa toda la página mientras hay petición. */
+  .cargando { position: fixed; inset: 0; background: #fff9; display: grid; place-items: center; font-weight: 700; z-index: 100; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+  // Cada «Siguiente» hace una petición lenta con un overlay encima; el paso 2 además carga
+  // sus opciones y deja «Siguiente» deshabilitado hasta tenerlas. Sin espera automática,
+  // la reproducción clica sobre el overlay o antes de que exista el formulario siguiente.
+  const app = document.getElementById("app");
+  const data = {};
+
+  async function api(ms) {
+    const ov = document.createElement("div");
+    ov.className = "cargando";
+    ov.textContent = "Cargando…";
+    document.body.appendChild(ov);
+    try {
+      await fetch(`/api/slow?ms=${ms}`);
+    } finally {
+      ov.remove();
+    }
+  }
+
+  function paso1() {
+    app.innerHTML = `<h1>Paso 1 de 3 · Datos</h1>
+      <p class="hint">Cada paso hace peticiones de 1-2 s con un overlay de carga.</p>
+      <label>Nombre <input name="nombre" placeholder="Tu nombre"></label>
+      <button type="button" data-testid="siguiente-1">Siguiente</button>`;
+    app.querySelector("button").onclick = async () => {
+      data.nombre = app.querySelector("input").value;
+      await api(1500);
+      paso2();
+    };
+  }
+
+  function paso2() {
+    app.innerHTML = `<h1>Paso 2 de 3 · Envío</h1>
+      <label>Provincia <select name="provincia"><option value="">Cargando…</option></select></label>
+      <label>Dirección <input name="direccion" placeholder="Calle y número"></label>
+      <button type="button" data-testid="siguiente-2" disabled>Siguiente</button>`;
+    const sel = app.querySelector("select");
+    const btn = app.querySelector("button");
+    // Opciones cargadas en segundo plano, sin overlay: solo el botón deshabilitado lo delata.
+    fetch("/api/slow?ms=1200").then(() => {
+      sel.innerHTML = ["Madrid", "Barcelona", "Valencia"].map((p) => `<option>${p}</option>`).join("");
+      btn.disabled = false;
+    });
+    btn.onclick = async () => {
+      data.provincia = sel.value;
+      data.direccion = app.querySelector('[name="direccion"]').value;
+      await api(2000);
+      paso3();
+    };
+  }
+
+  function paso3() {
+    app.innerHTML = `<h1>Paso 3 de 3 · Hecho</h1>
+      <p data-testid="resumen">${data.nombre} · ${data.provincia} · ${data.direccion}</p>`;
+  }
+
+  paso1();
+</script>
+</body>
+</html>
