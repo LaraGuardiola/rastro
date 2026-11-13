@@ -66,6 +66,9 @@ function parseRastro(data: unknown): Flow[] {
 /** Traduce un selector de Rastro a la sintaxis de Puppeteer. */
 function ppSelector(sel: string): string {
   if (sel.startsWith("text=")) return `::-p-text(${JSON.stringify(sel.slice(5))})`;
+  // «A >> B» → combinador descendiente (Puppeteer admite ::-p-text tras un selector CSS).
+  const i = sel.indexOf(" >> ");
+  if (i > 0) return `${ppSelector(sel.slice(0, i))} ${ppSelector(sel.slice(i + 4))}`;
   if (sel.startsWith("label=")) return `::-p-aria(${JSON.stringify(sel.slice(6))})`;
   if (sel.startsWith("xpath=")) return `::-p-xpath(${sel.slice(6)})`;
   return sel;

@@ -166,9 +166,12 @@ async function typeInto(el: Element, value: string, s: Settings) {
 function selectOption(el: Element, value: string, optionText?: string) {
   if (!(el instanceof HTMLSelectElement)) throw new StepError("El elemento no es un <select>");
   const opts = [...el.options];
+  const byValue = opts.find((o) => o.value === value);
+  const byText = optionText ? opts.find((o) => o.text.trim() === optionText) : undefined;
+  // Si el value apunta a otra opción (values por índice que cambian), manda el texto visible.
   const opt =
-    opts.find((o) => o.value === value) ??
-    (optionText ? opts.find((o) => o.text.trim() === optionText) : undefined) ??
+    (byValue && byText && byValue.text.trim() !== optionText ? byText : byValue) ??
+    byText ??
     opts.find((o) => o.text.trim() === value) ??
     opts.find((o) => o.text.trim().toLowerCase().includes(value.toLowerCase()));
   if (!opt) throw new StepError(`El select no tiene la opción «${optionText ?? value}»`);

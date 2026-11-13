@@ -406,7 +406,7 @@ function stepDetails(flow: Flow, s: Step, i: number) {
           h("input", {
             class: "input sm mono grow",
             value: s.selector ?? "",
-            placeholder: "css, text=…, label=…, xpath=…",
+            placeholder: "css, text=…, label=…, xpath=…, A >> B",
             "data-k": `sel-${s.id}`,
             oninput: (e: Event) => {
               s.selector = (e.target as HTMLInputElement).value || undefined;

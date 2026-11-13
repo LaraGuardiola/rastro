@@ -126,6 +126,9 @@ export function fromDevTools(rec: DTRecording): { flow: Flow; skipped: string[] 
 
 function toDTSelector(sel: string): string {
   if (sel.startsWith("text=")) return `text/${sel.slice(5)}`;
+  // Recorder no encadena selectores: nos quedamos con el último eslabón.
+  const i = sel.indexOf(" >> ");
+  if (i > 0) return toDTSelector(sel.slice(i + 4));
   if (sel.startsWith("label=")) return `aria/${sel.slice(6)}`;
   if (sel.startsWith("xpath=")) return `xpath/${sel.slice(6)}`;
   return sel;

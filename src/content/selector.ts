@@ -6,6 +6,7 @@
 //   text=Enviar    → elemento cuyo texto visible es exactamente «Enviar» (o, si no hay, que lo contiene)
 //   label=Email    → control de formulario asociado a la etiqueta/aria-label «Email»
 //   xpath=//div[1] → XPath
+//   A >> B         → busca B solo dentro de lo que encuentre A (p. ej. `.el-select-dropdown >> text=España`)
 //
 // Al generar, se producen varios candidatos ordenados por robustez. El reproductor
 // prueba el principal y, si falla, los alternativos.
@@ -90,7 +91,7 @@ export function textOf(el: Element): string {
   return norm((el as HTMLElement).innerText ?? el.textContent);
 }
 
-function* allElements(root: Document | ShadowRoot = document): Generator<Element> {
+function* allElements(root: Document | ShadowRoot | Element = document): Generator<Element> {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   let n = walker.nextNode();
   while (n) {
@@ -101,12 +102,12 @@ function* allElements(root: Document | ShadowRoot = document): Generator<Element
   }
 }
 
-function byText(text: string): Element[] {
+function byText(text: string, root: Document | Element = document): Element[] {
   const target = norm(text);
   const exact: Element[] = [];
   const partial: Element[] = [];
   const lower = target.toLowerCase();
-  for (const el of allElements()) {
+  for (const el of allElements(root)) {
     if (el.closest("script, style, noscript, template, #__rastro_host")) continue;
     const limit = target.length * 3 + 20;
     // textContent es barato; innerText fuerza layout, así que solo para candidatos cortos.
@@ -161,10 +162,21 @@ function dedupe<T>(arr: T[]): T[] {
   return [...new Set(arr)];
 }
 
-/** Devuelve todos los elementos que casan con un selector de Rastro. */
-export function resolveAll(selector: string): Element[] {
+const CHAIN = " >> ";
+
+/** ¿El último eslabón del selector es un text=? */
+const endsInText = (sel: string) => sel.startsWith("text=") || sel.includes(CHAIN + "text=");
+
+/** Devuelve todos los elementos que casan con un selector de Rastro (dentro de `root`, si se da). */
+export function resolveAll(selector: string, root: Document | Element = document): Element[] {
   try {
-    if (selector.startsWith("text=")) return byText(unquote(selector.slice(5)));
+    if (selector.startsWith("text=")) return byText(unquote(selector.slice(5)), root);
+    // Encadenado: «A >> B». Lo que va tras text= es texto literal, así que solo se parte antes.
+    const i = selector.indexOf(CHAIN);
+    if (i > 0) {
+      const scopes = resolveAll(selector.slice(0, i), root);
+      return dedupe(scopes.flatMap((sc) => resolveAll(selector.slice(i + CHAIN.length), sc)));
+    }
     if (selector.startsWith("label=")) return byLabel(unquote(selector.slice(6)));
     if (selector.startsWith("xpath=")) return byXPath(selector.slice(6));
     if (selector.startsWith("frame=")) {
@@ -172,7 +184,7 @@ export function resolveAll(selector: string): Element[] {
       const f = document.querySelectorAll("iframe, frame")[Number(selector.slice(6))];
       return f ? [f] : [];
     }
-    return [...document.querySelectorAll(selector)];
+    return [...root.querySelectorAll(selector)];
   } catch {
     return [];
   }
@@ -234,6 +246,42 @@ function cssPath(el: Element): string {
   return parts.join(" > ");
 }
 
+// Contenedores típicos de opciones de desplegables, menús y listas de librerías.
+const OPTION_LIST =
+  '[role="listbox"], [role="menu"], [role="tree"], [role="grid"], ul, ol, ' +
+  '[class*="dropdown"], [class*="popper"], [class*="popover"], [class*="menu"], [class*="option"], [class*="select"], [class*="list"]';
+
+/** Selectores sencillos (sin posición) para un contenedor. */
+function containerSelectors(box: Element): string[] {
+  const tag = box.tagName.toLowerCase();
+  const out: string[] = [];
+  const role = box.getAttribute("role");
+  if (role) out.push(`[role=${q(role)}]`);
+  for (const a of TEST_ATTRS) {
+    const v = box.getAttribute(a);
+    if (v) out.unshift(`[${a}=${q(v)}]`);
+  }
+  if (box.id && !looksGenerated(box.id)) out.unshift("#" + CSS.escape(box.id));
+  const cls = stableClasses(box).slice(0, 3);
+  if (cls.length) out.push(tag + "." + cls.map((c) => CSS.escape(c)).join("."));
+  return out;
+}
+
+/**
+ * Para opciones de desplegables: texto acotado a su lista, «.el-select-dropdown >> text=España».
+ * No depende de la posición de la opción (que cambia si cambia el orden) y no choca con el
+ * mismo texto en otra parte de la página (el valor ya elegido, una etiqueta…).
+ */
+function scopedText(el: Element, text: string): string[] {
+  const out: string[] = [];
+  let box = el.parentElement?.closest(OPTION_LIST);
+  for (let i = 0; box && box !== document.body && i < 4; i++) {
+    for (const sc of containerSelectors(box)) out.push(`${sc}${CHAIN}text=${text}`);
+    box = box.parentElement?.closest(OPTION_LIST);
+  }
+  return out;
+}
+
 /** Genera selectores candidatos ordenados de más a menos robusto. Todos únicos. */
 export function buildSelectors(el: Element): string[] {
   const tag = el.tagName.toLowerCase();
@@ -265,7 +313,10 @@ export function buildSelectors(el: Element): string[] {
 
   if (!isControl) {
     const t = textOf(el);
-    if (t && t.length <= 50 && !el.querySelector(CONTROL)) c.push(`text=${t}`);
+    if (t && t.length <= 80 && !el.querySelector(CONTROL)) {
+      if (t.length <= 50) c.push(`text=${t}`);
+      c.push(...scopedText(el, t));
+    }
   }
 
   if (el instanceof HTMLAnchorElement) {
@@ -285,7 +336,7 @@ export function buildSelectors(el: Element): string[] {
 
   // text= apunta al nodo más profundo con ese texto (p. ej. el <span> de un <li> de desplegable): clicarlo equivale.
   const sameTarget = (s: string) => {
-    const isText = s.startsWith("text=");
+    const isText = endsInText(s);
     const hit = (x: Element) => x === el || (isText && el.contains(x) && textOf(x) === textOf(el));
     const r = resolveAll(s);
     if (r.length === 1) return hit(r[0]!);
