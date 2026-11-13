@@ -25,8 +25,52 @@ const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").tr
 
 const STATE_CLASSES = /^(is-|has-)?(active|focus(ed)?|hover(ed)?|selected|open(ed)?|disabled|checked|visible|hidden|show|in|ng-.*)$/i;
 
+// Última palabra de una clase BEM/utilitaria que indica estado: is-hovering, ant-select-item-option-active,
+// v-list-item--highlighted, Mui-focusVisible, router-link-exact-active…
+const STATE_WORDS = new Set([
+  "active", "focus", "focused", "focusvisible", "focuswithin", "hover", "hovered", "hovering", "highlight", "highlighted",
+  "selected", "current", "open", "opened", "expanded", "collapsed", "pressed", "disabled", "checked", "visible", "hidden",
+  "shown", "enter", "entering", "leave", "leaving", "touched", "dirty", "pristine", "valid", "invalid", "error",
+]);
+
+function isStateClass(c: string): boolean {
+  if (STATE_CLASSES.test(c)) return true;
+  const words = c.split(/[-_]+|(?<=[a-z])(?=[A-Z])/).filter(Boolean);
+  return words.length > 1 && STATE_WORDS.has(words.at(-1)!.toLowerCase());
+}
+
+// Clases que se han visto aparecer/desaparecer durante la grabación (hover, focus, abierto…):
+// dependen del estado del ratón o de la UI, así que no sirven para reencontrar el elemento.
+const volatile = new Set<string>();
+let classObserver: MutationObserver | null = null;
+
+function noteClassChanges(records: MutationRecord[]) {
+  for (const r of records) {
+    const before = new Set((r.oldValue ?? "").split(/\s+/).filter(Boolean));
+    const after = (r.target as Element).classList;
+    for (const c of after) if (!before.has(c)) volatile.add(c);
+    for (const c of before) if (!after.contains(c)) volatile.add(c);
+  }
+}
+
+/** Empieza/para de anotar clases que cambian. Se activa mientras se graba o se señala. */
+export function trackVolatileClasses(on: boolean) {
+  if (on && !classObserver) {
+    classObserver = new MutationObserver(noteClassChanges);
+    classObserver.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class"], attributeOldValue: true });
+  } else if (!on && classObserver) {
+    noteClassChanges(classObserver.takeRecords());
+    classObserver.disconnect();
+    classObserver = null;
+  }
+}
+
 function stableClasses(el: Element): string[] {
-  return [...el.classList].filter((c) => !looksGenerated(c) && !STATE_CLASSES.test(c) && !c.includes(":") && c.length < 32);
+  // Procesar mutaciones pendientes: la clase de hover puede haberse añadido justo antes del click.
+  if (classObserver) noteClassChanges(classObserver.takeRecords());
+  return [...el.classList].filter(
+    (c) => !looksGenerated(c) && !isStateClass(c) && !volatile.has(c) && !c.includes(":") && c.length < 32,
+  );
 }
 
 const q = (v: string) => JSON.stringify(v); // comillas + escapes válidos en CSS
@@ -241,8 +285,15 @@ export function buildSelectors(el: Element): string[] {
 
   // text= apunta al nodo más profundo con ese texto (p. ej. el <span> de un <li> de desplegable): clicarlo equivale.
   const sameTarget = (s: string) => {
+    const isText = s.startsWith("text=");
+    const hit = (x: Element) => x === el || (isText && el.contains(x) && textOf(x) === textOf(el));
     const r = resolveAll(s);
-    return r.length === 1 && (r[0] === el || (s.startsWith("text=") && el.contains(r[0]!) && textOf(r[0]!) === textOf(el)));
+    if (r.length === 1) return hit(r[0]!);
+    // Desplegables teletransportados (Element Plus, Ant…): las opciones de otros selects siguen en el DOM
+    // pero ocultas. Si el único visible es el nuestro, resolve() lo elegirá también al reproducir.
+    if (!isText) return false;
+    const vis = r.filter(isVisible);
+    return vis.length === 1 && hit(vis[0]!);
   };
   const unique = dedupe(c).filter(sameTarget);
   unique.push(cssPath(el));

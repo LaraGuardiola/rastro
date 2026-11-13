@@ -8,7 +8,7 @@
 
 import type { RecordedStep } from "../shared/messages";
 import { COLORS, overlay } from "./overlay";
-import { actionable, buildSelectors, checkedOf, describe, kindOf, valueOf, type ActionKind } from "./selector";
+import { actionable, buildSelectors, checkedOf, describe, kindOf, trackVolatileClasses, valueOf, type ActionKind } from "./selector";
 
 type Mode = "record" | "point";
 
@@ -176,6 +176,7 @@ export function startRecording(m: Mode, sink: (s: RecordedStep) => void, onStop:
   send = sink;
   stopHandler = onStop;
   overlay.onStop = onStop;
+  trackVolatileClasses(true);
   for (const [ev, fn] of listeners) window.addEventListener(ev, fn, true);
   window.addEventListener("pagehide", onLeave);
   window.addEventListener("scroll", onScroll, true);
@@ -188,6 +189,7 @@ export function stopRecording() {
   for (const [ev, fn] of listeners) window.removeEventListener(ev, fn, true);
   window.removeEventListener("pagehide", onLeave);
   window.removeEventListener("scroll", onScroll, true);
+  trackVolatileClasses(false);
   mode = null;
   overlay.hide();
   overlay.setPill(null);
@@ -208,6 +210,7 @@ export function pickOnce(): Promise<RecordedStep | null> {
       window.removeEventListener("keydown", key, true);
       overlay.hide();
       cancelPick = () => {};
+      if (!mode) trackVolatileClasses(false);
       resolve(r);
     };
     const click = (e: MouseEvent) => {
@@ -222,6 +225,7 @@ export function pickOnce(): Promise<RecordedStep | null> {
         done(null);
       }
     };
+    trackVolatileClasses(true);
     window.addEventListener("mousemove", onMove as EventListener, true);
     for (const ev of ["pointerdown", "mousedown", "pointerup", "mouseup"]) window.addEventListener(ev, block, true);
     window.addEventListener("click", click, true);
